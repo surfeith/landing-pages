@@ -428,7 +428,7 @@ String renderPage(SitePage page, Business business, {required String base, Strin
     }
     b.writeln('</section>');
   }
-  b.writeln('<a class="cta" href="${escAttr('verity://market/page/${page.address}')}">Open in Verity</a>');
+  b.writeln('<a class="cta" href="${escAttr('verity://open/market/page/${page.address}')}">Open in Verity</a>');
   b.writeln('<p class="meta">Published ${esc(page.event.time.toIso8601String().substring(0, 10))} · '
       '<a href="$base/c/${slugOf(page.category)}/">${esc(what)}</a>'
       '${where.isNotEmpty ? ' · <a href="$base/l/${slugOf(where)}/">${esc(where)}</a> · <a href="$base/l/${slugOf(where)}/${slugOf(page.category)}/">${esc('$what in $where')}</a>' : ''}'

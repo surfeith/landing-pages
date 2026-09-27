@@ -52,7 +52,7 @@ void main() {
     expect(html, contains('tel:+9723000'));
     expect(html, contains('https://paws.example'));
     expect(html, contains('★ 4.5 · 12'));
-    expect(html, contains('verity://market/page/$pageKind:${'a' * 64}:page-1'));
+    expect(html, contains('verity://open/market/page/$pageKind:${'a' * 64}:page-1'));
   });
 
   test('the index groups pages by place and the sitemap lists them', () {
