@@ -18,6 +18,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 const pageKind = 30777;
 const reviewKind = 30775;
 const profileKind = 0;
+const deletionKind = 5;
 
 const defaultRelays = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
 
@@ -173,10 +174,29 @@ Future<int> buildSite({
     {'kinds': [pageKind], 'since': sinceAt},
   ]));
   // Other apps use kind 30777 for their own things: only Verity's pages.
-  final pages = [for (final e in pageEvents.values) if (e.tag('client') == 'verity') SitePage(e)]
+  var pages = [for (final e in pageEvents.values) if (e.tag('client') == 'verity') SitePage(e)]
     ..removeWhere((p) => p.title.isEmpty || p.id.isEmpty)
     ..sort((a, b) => b.event.createdAt.compareTo(a.event.createdAt));
+  // A page switched off in the app is withdrawn with a deletion (NIP-09).
+  // Not every relay drops the page for it, so the deletions are read too.
   final authors = {for (final p in pages) p.event.pubkey}.toList();
+  if (authors.isNotEmpty) {
+    final deletions = await fetch(relays, [
+      {'kinds': [deletionKind], 'authors': authors, 'since': sinceAt},
+    ]);
+    final withdrawn = <String, int>{};
+    for (final d in deletions) {
+      for (final address in d.tagValues('a')) {
+        if (address.startsWith('$pageKind:${d.pubkey}:')) {
+          withdrawn[address] = [withdrawn[address] ?? 0, d.createdAt].reduce((a, b) => a > b ? a : b);
+        }
+      }
+    }
+    pages = [
+      for (final p in pages)
+        if ((withdrawn[p.address] ?? -1) < p.event.createdAt) p
+    ];
+  }
   final businesses = <String, Business>{};
   if (authors.isNotEmpty) {
     final extra = await fetch(relays, [

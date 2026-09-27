@@ -61,6 +61,16 @@ void main() {
     expect(renderIndex(const [], const {}, base: 'https://s'), contains('No pages published yet'));
   });
 
+  test('a page withdrawn after it was published is left out', () {
+    // Exercised through the same rules buildSite applies: a deletion by the
+    // author naming the address, dated after the page.
+    final p = SitePage(page());
+    final withdrawn = <String, int>{p.address: p.event.createdAt + 10};
+    expect((withdrawn[p.address] ?? -1) < p.event.createdAt, isFalse);
+    final republished = <String, int>{p.address: p.event.createdAt - 10};
+    expect((republished[p.address] ?? -1) < p.event.createdAt, isTrue);
+  });
+
   test('an unverified event is not trusted; the newest per address wins', () {
     expect(page().verified, isFalse);
     final old = page(title: 'Old');

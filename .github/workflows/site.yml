@@ -1,10 +1,10 @@
-# Rebuilds the marketplace web pages from the public relays every hour and
+# Rebuilds the marketplace web pages from the public relays every quarter hour and
 # publishes them with GitHub Pages. Lives in the public landing-pages
 # repository (Settings → Pages → Source: GitHub Actions).
 name: site
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
