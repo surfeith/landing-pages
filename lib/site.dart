@@ -108,6 +108,36 @@ Map<String, Event> latestByAddress(Iterable<Event> events) {
   return out;
 }
 
+/// What a category is called on the web, in English: the words people
+/// search for. The app's keys are the same everywhere.
+const categoryLabels = {
+  'vet': 'Veterinarian', 'doctor': 'Doctor', 'dentist': 'Dentist', 'beauty': 'Beauty salon',
+  'fitness': 'Fitness', 'food': 'Food', 'shop': 'Shop', 'repair': 'Repairs', 'plumber': 'Plumber',
+  'electrician': 'Electrician', 'cleaning': 'Cleaning', 'moving': 'Movers', 'transport': 'Transport',
+  'education': 'Education', 'legal': 'Legal services', 'finance': 'Financial services',
+  'photo': 'Photo & video', 'events': 'Events', 'pets': 'Pets', 'other': 'Services',
+};
+
+String categoryLabel(String key) => categoryLabels[key] ?? categoryLabels['other']!;
+
+/// A path segment from a name: lowercase ASCII where possible, the rest
+/// kept as is (Hebrew stays Hebrew and is percent-encoded by the browser).
+String slugOf(String text) {
+  final t = text.trim().toLowerCase().replaceAll(RegExp(r'[\s/\\?#&=%]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+  return t.isEmpty ? 'elsewhere' : t;
+}
+
+/// The town: the first part of a place name from the place search.
+String townOf(String place) => place.split(',').first.trim();
+
+/// Hebrew, Arabic or Cyrillic text gets its language on the page.
+String langOf(String text) {
+  if (RegExp(r'[\u0590-\u05FF]').hasMatch(text)) return 'he';
+  if (RegExp(r'[\u0600-\u06FF]').hasMatch(text)) return 'ar';
+  if (RegExp(r'[\u0400-\u04FF]').hasMatch(text)) return 'ru';
+  return 'en';
+}
+
 String esc(Object? v) => const HtmlEscape(HtmlEscapeMode.element).convert('${v ?? ''}');
 String escAttr(Object? v) => const HtmlEscape(HtmlEscapeMode.attribute).convert('${v ?? ''}');
 
@@ -145,6 +175,8 @@ class SitePage {
     if (frames.isEmpty || servers.isEmpty) return null;
     return '${servers.first}/${frames[frames.length ~/ 2]}';
   }
+
+  String get town => townOf(place);
 
   /// The file name on the site: author prefix and page id, safe for a path.
   String get slug =>
@@ -249,6 +281,44 @@ Future<int> buildSite({
     await File('${pageDir.path}/${page.slug}.html').writeAsString(renderPage(page, business, base: base, poster: poster));
     urls.add('$base/p/${page.slug}.html');
   }
+  // Category and place pages: what ranks for "electrician in Ashdod".
+  final byCategory = <String, List<SitePage>>{};
+  final byTown = <String, List<SitePage>>{};
+  for (final p in pages) {
+    byCategory.putIfAbsent(p.category, () => []).add(p);
+    byTown.putIfAbsent(p.town, () => []).add(p);
+  }
+  for (final entry in byCategory.entries) {
+    final dir = Directory('${out.path}/c/${slugOf(entry.key)}')..createSync(recursive: true);
+    final url = '$base/c/${slugOf(entry.key)}/';
+    await File('${dir.path}/index.html').writeAsString(renderListing(
+        title: categoryLabel(entry.key),
+        description: '${categoryLabel(entry.key)}: businesses on Verity, by place.',
+        pages: entry.value, businesses: businesses, base: base, url: url));
+    urls.add(url);
+  }
+  for (final entry in byTown.entries) {
+    final dir = Directory('${out.path}/l/${slugOf(entry.key)}')..createSync(recursive: true);
+    final url = '$base/l/${slugOf(entry.key)}/';
+    await File('${dir.path}/index.html').writeAsString(renderListing(
+        title: entry.key,
+        description: 'Businesses and services in ${entry.key} on Verity.',
+        pages: entry.value, businesses: businesses, base: base, url: url));
+    urls.add(url);
+    final cats = <String, List<SitePage>>{};
+    for (final p in entry.value) {
+      cats.putIfAbsent(p.category, () => []).add(p);
+    }
+    for (final c in cats.entries) {
+      final sub = Directory('${dir.path}/${slugOf(c.key)}')..createSync(recursive: true);
+      final subUrl = '$url${slugOf(c.key)}/';
+      await File('${sub.path}/index.html').writeAsString(renderListing(
+          title: '${categoryLabel(c.key)} in ${entry.key}',
+          description: '${categoryLabel(c.key)} in ${entry.key}: ${c.value.length == 1 ? 'one business' : '${c.value.length} businesses'} on Verity, with prices and bookings.',
+          pages: c.value, businesses: businesses, base: base, url: subUrl));
+      urls.add(subUrl);
+    }
+  }
   await File('${out.path}/index.html').writeAsString(renderIndex(pages, businesses, base: base));
   await File('${out.path}/sitemap.xml').writeAsString(renderSitemap(urls));
   await File('${out.path}/robots.txt').writeAsString('User-agent: *\nAllow: /\nSitemap: $base/sitemap.xml\n');
@@ -272,13 +342,37 @@ section.scene{background:#fff;border-radius:16px;padding:20px;margin:16px 0;box-
 
 String renderPage(SitePage page, Business business, {required String base, String? poster}) {
   final title = page.title;
-  final desc = page.summary.isNotEmpty ? page.summary : '${business.name.isNotEmpty ? '${business.name} · ' : ''}${page.place}';
+  final who = business.name.isNotEmpty ? business.name : title;
+  final what = categoryLabel(page.category);
+  final where = page.town;
+  // What people search for: who, what, where.
+  final docTitle = [who, if (where.isNotEmpty) '$what in $where' else what].join(' · ');
+  final desc = [
+    if (page.summary.isNotEmpty) page.summary,
+    '$what${where.isNotEmpty ? ' in $where' : ''}.',
+    if (business.rating != null) 'Rated ${business.rating!.toStringAsFixed(1)} by ${business.reviews} clients.',
+    'Prices and bookings on Verity.',
+  ].join(' ');
+  final lang = langOf('$title ${page.summary}');
+  final jsonLd = jsonEncode({
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    'name': who,
+    if (page.summary.isNotEmpty) 'description': page.summary,
+    'url': '$base/p/${page.slug}.html',
+    if (poster != null) 'image': poster,
+    if (page.place.isNotEmpty) 'address': {'@type': 'PostalAddress', 'addressLocality': where, 'addressCountry': page.place.split(',').last.trim()},
+    if (business.rating != null)
+      'aggregateRating': {'@type': 'AggregateRating', 'ratingValue': business.rating!.toStringAsFixed(1), 'reviewCount': business.reviews, 'bestRating': 5},
+    'additionalType': what,
+  });
   final b = StringBuffer()
-    ..writeln('<!doctype html><html lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">')
-    ..writeln('<title>${esc(title)}${business.name.isNotEmpty ? ' · ${esc(business.name)}' : ''}</title>')
+    ..writeln('<!doctype html><html lang="$lang"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">')
+    ..writeln('<title>${esc(docTitle)}</title>')
     ..writeln('<meta name="description" content="${escAttr(desc)}">')
+    ..writeln('<script type="application/ld+json">${jsonLd.replaceAll('</', '<\\/')}</script>')
     ..writeln('<link rel="canonical" href="${escAttr('$base/p/${page.slug}.html')}">')
-    ..writeln('<meta property="og:type" content="website"><meta property="og:title" content="${escAttr(title)}"><meta property="og:description" content="${escAttr(desc)}">')
+    ..writeln('<meta property="og:type" content="website"><meta property="og:title" content="${escAttr(docTitle)}"><meta property="og:description" content="${escAttr(desc)}">')
     ..writeln('<meta property="og:url" content="${escAttr('$base/p/${page.slug}.html')}">');
   if (poster != null) {
     b.writeln('<meta property="og:image" content="${escAttr(poster)}"><meta name="twitter:card" content="summary_large_image">');
@@ -335,7 +429,10 @@ String renderPage(SitePage page, Business business, {required String base, Strin
     b.writeln('</section>');
   }
   b.writeln('<a class="cta" href="${escAttr('verity://market/page/${page.address}')}">Open in Verity</a>');
-  b.writeln('<p class="meta">Published ${esc(page.event.time.toIso8601String().substring(0, 10))} · <a href="$base/">All pages</a></p>');
+  b.writeln('<p class="meta">Published ${esc(page.event.time.toIso8601String().substring(0, 10))} · '
+      '<a href="$base/c/${slugOf(page.category)}/">${esc(what)}</a>'
+      '${where.isNotEmpty ? ' · <a href="$base/l/${slugOf(where)}/">${esc(where)}</a> · <a href="$base/l/${slugOf(where)}/${slugOf(page.category)}/">${esc('$what in $where')}</a>' : ''}'
+      ' · <a href="$base/">All pages</a></p>');
   b.writeln('</main><footer>Verity marketplace · pages are signed by their owners and served from public relays.</footer></body></html>');
   return b.toString();
 }
@@ -353,28 +450,63 @@ String _money(num value, String currency) {
   return '$symbol$text';
 }
 
+String _cards(Iterable<SitePage> pages, Map<String, Business> businesses, String base) {
+  final b = StringBuffer('<div class="grid">');
+  for (final p in pages) {
+    final biz = businesses[p.event.pubkey];
+    b.writeln('<a class="card" href="${escAttr('$base/p/${p.slug}.html')}" style="--accent:${p.accent}"><div class="swatch"></div><div class="body"><h3>${esc(biz != null && biz.name.isNotEmpty ? biz.name : p.title)}</h3>'
+        '<div class="meta">${esc(categoryLabel(p.category))}${p.town.isNotEmpty ? ' · ${esc(p.town)}' : ''}'
+        '${biz?.rating != null ? ' · <span class="stars">★ ${biz!.rating!.toStringAsFixed(1)}</span>' : ''}</div></div></a>');
+  }
+  b.writeln('</div>');
+  return b.toString();
+}
+
+String _head(String title, String description, String url, {String lang = 'en'}) =>
+    '<!doctype html><html lang="$lang"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<title>${esc(title)}</title><meta name="description" content="${escAttr(description)}">'
+    '<link rel="canonical" href="${escAttr(url)}"><meta property="og:title" content="${escAttr(title)}"><meta property="og:description" content="${escAttr(description)}">'
+    '<style>$_css</style></head><body>';
+
+const _footer = '</main><footer>Verity marketplace · pages are signed by their owners and served from public relays.</footer></body></html>';
+
 String renderIndex(List<SitePage> pages, Map<String, Business> businesses, {required String base}) {
   final b = StringBuffer()
-    ..writeln('<!doctype html><html lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">')
-    ..writeln('<title>Verity marketplace</title><meta name="description" content="Businesses near you: their pages, offers and bookings.">')
-    ..writeln('<link rel="canonical" href="${escAttr('$base/')}"><style>$_css</style></head><body>')
-    ..writeln('<header class="hero"><h1>Verity marketplace</h1><p>Businesses and their pages, by place.</p></header><main>');
-  final byPlace = <String, List<SitePage>>{};
+    ..writeln(_head('Verity marketplace: local businesses and services', 'Businesses and services near you, by place and category: their pages, prices and bookings.', '$base/'))
+    ..writeln('<header class="hero"><h1>Local businesses and services</h1><p>By place and by what they do. Every page is signed by its owner.</p></header><main>');
+  final byTown = <String, List<SitePage>>{};
+  final categories = <String>{};
   for (final p in pages) {
-    byPlace.putIfAbsent(p.place.split(',').first.trim(), () => []).add(p);
+    byTown.putIfAbsent(p.town, () => []).add(p);
+    categories.add(p.category);
   }
-  for (final entry in byPlace.entries) {
-    b.writeln('<h2>${esc(entry.key.isEmpty ? 'Elsewhere' : entry.key)}</h2><div class="grid">');
-    for (final p in entry.value) {
-      final biz = businesses[p.event.pubkey];
-      b.writeln('<a class="card" href="${escAttr('$base/p/${p.slug}.html')}" style="--accent:${p.accent}"><div class="swatch"></div><div class="body"><h3>${esc(p.title)}</h3>'
-          '<div class="meta">${esc(p.category)}${biz != null && biz.name.isNotEmpty ? ' · ${esc(biz.name)}' : ''}'
-          '${biz?.rating != null ? ' · <span class="stars">★ ${biz!.rating!.toStringAsFixed(1)}</span>' : ''}</div></div></a>');
-    }
-    b.writeln('</div>');
+  if (categories.isNotEmpty) {
+    b.writeln('<p class="meta">${[for (final c in categories.toList()..sort()) '<a href="$base/c/${slugOf(c)}/">${esc(categoryLabel(c))}</a>'].join(' · ')}</p>');
+  }
+  for (final entry in byTown.entries) {
+    b.writeln('<h2><a href="$base/l/${slugOf(entry.key)}/">${esc(entry.key.isEmpty ? 'Elsewhere' : entry.key)}</a></h2>');
+    b.writeln(_cards(entry.value, businesses, base));
   }
   if (pages.isEmpty) b.writeln('<p class="meta">No pages published yet.</p>');
-  b.writeln('</main><footer>Verity marketplace · pages are signed by their owners and served from public relays.</footer></body></html>');
+  b.writeln(_footer);
+  return b.toString();
+}
+
+/// A category, a place, or a category in a place.
+String renderListing({
+  required String title,
+  required String description,
+  required List<SitePage> pages,
+  required Map<String, Business> businesses,
+  required String base,
+  required String url,
+}) {
+  final b = StringBuffer()
+    ..writeln(_head('$title · Verity', description, url, lang: langOf(title)))
+    ..writeln('<header class="hero"><h1>${esc(title)}</h1><p>${esc(description)}</p></header><main>')
+    ..writeln(_cards(pages, businesses, base))
+    ..writeln('<p class="meta"><a href="$base/">All pages</a></p>')
+    ..writeln(_footer);
   return b.toString();
 }
 

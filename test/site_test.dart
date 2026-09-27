@@ -38,7 +38,11 @@ void main() {
     expect(p.slug, 'aaaaaaaa-page-1');
     expect(p.posterUrl, 'https://host/f2');
     final html = renderPage(p, Business(name: 'Omer', rating: 4.5, reviews: 12), base: 'https://s', poster: 'https://s/p/x.jpg');
-    expect(html, contains('<title>Paws Vet · Omer</title>'));
+    expect(html, contains('<title>Omer · Veterinarian in Ashdod</title>'));
+    expect(html, contains('"@type":"LocalBusiness"'));
+    expect(html, contains('"ratingValue":"4.5"'));
+    expect(html, contains('href="https://s/l/ashdod/vet/"'));
+    expect(html, contains('<html lang="en">'));
     expect(html, contains('og:image'));
     expect(html, contains('--accent:#B23A48'));
     expect(html, contains('&lt;script&gt;'));
@@ -54,8 +58,15 @@ void main() {
   test('the index groups pages by place and the sitemap lists them', () {
     final p = SitePage(page());
     final index = renderIndex([p], {'a' * 64: Business(name: 'Omer')}, base: 'https://s');
-    expect(index, contains('<h2>Ashdod</h2>'));
+    expect(index, contains('<a href="https://s/l/ashdod/">Ashdod</a>'));
+    expect(index, contains('href="https://s/c/vet/"'));
     expect(index, contains('href="https://s/p/aaaaaaaa-page-1.html"'));
+    final listing = renderListing(title: 'Veterinarian in Ashdod', description: 'd', pages: [p], businesses: const {}, base: 'https://s', url: 'https://s/l/ashdod/vet/');
+    expect(listing, contains('<title>Veterinarian in Ashdod · Verity</title>'));
+    expect(slugOf('Tel Aviv-Yafo'), 'tel-aviv-yafo');
+    expect(slugOf('אשדוד'), 'אשדוד');
+    expect(langOf('שלום'), 'he');
+    expect(langOf('Hello'), 'en');
     final sitemap = renderSitemap(['https://s/', 'https://s/p/aaaaaaaa-page-1.html']);
     expect(sitemap, contains('<loc>https://s/p/aaaaaaaa-page-1.html</loc>'));
     expect(renderIndex(const [], const {}, base: 'https://s'), contains('No pages published yet'));
