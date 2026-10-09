@@ -323,8 +323,23 @@ Future<int> buildSite({
   await File('${out.path}/sitemap.xml').writeAsString(renderSitemap(urls));
   await File('${out.path}/robots.txt').writeAsString('User-agent: *\nAllow: /\nSitemap: $base/sitemap.xml\n');
   await File('${out.path}/.nojekyll').writeAsString('');
+  await copyStatic(out);
   client.close();
   return pages.length;
+}
+
+/// Copies the repository's `static/` folder into the site as is: files
+/// that must be served at a fixed path next to the generated pages, such
+/// as the search-engine ownership proof.
+Future<void> copyStatic(Directory out, {Directory? from}) async {
+  final src = from ?? Directory('static');
+  if (!src.existsSync()) return;
+  await for (final f in src.list(recursive: true)) {
+    if (f is! File) continue;
+    final rel = f.path.substring(src.path.length + 1);
+    final target = File('${out.path}/$rel')..parent.createSync(recursive: true);
+    await f.copy(target.path);
+  }
 }
 
 const _css = '''

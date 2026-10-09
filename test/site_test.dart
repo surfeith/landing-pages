@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:verity_site/site.dart';
@@ -88,5 +89,15 @@ void main() {
     final newer = Event({...old.json, 'created_at': 1790000100, 'id': 'y' * 64});
     final latest = latestByAddress([old, newer]);
     expect(latest.values.single.createdAt, 1790000100);
+  });
+
+  test('files in static/ are served at the same path in the site', () async {
+    final tmp = Directory.systemTemp.createTempSync('site');
+    final from = Directory('${tmp.path}/static')..createSync();
+    File('${from.path}/google-proof.html').writeAsStringSync('google-site-verification: google-proof.html');
+    final out = Directory('${tmp.path}/build')..createSync();
+    await copyStatic(out, from: from);
+    expect(File('${out.path}/google-proof.html').readAsStringSync(), 'google-site-verification: google-proof.html');
+    tmp.deleteSync(recursive: true);
   });
 }
