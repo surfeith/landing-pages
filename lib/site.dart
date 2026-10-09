@@ -525,6 +525,8 @@ String renderListing({
   return b.toString();
 }
 
+/// The sitemap protocol wants every URL percent-encoded: a town in its own
+/// letters (`/l/אשדוד/`) is written as `/l/%D7%90...%D7%93/`.
 String renderSitemap(List<String> urls) =>
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    '${urls.map((u) => '  <url><loc>${esc(u)}</loc></url>').join('\n')}\n</urlset>\n';
+    '${urls.map((u) => '  <url><loc>${esc(Uri.parse(u).toString())}</loc></url>').join('\n')}\n</urlset>\n';

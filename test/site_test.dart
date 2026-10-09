@@ -70,6 +70,7 @@ void main() {
     expect(langOf('Hello'), 'en');
     final sitemap = renderSitemap(['https://s/', 'https://s/p/aaaaaaaa-page-1.html']);
     expect(sitemap, contains('<loc>https://s/p/aaaaaaaa-page-1.html</loc>'));
+    expect(renderSitemap(['https://s/l/אשדוד/']), contains('<loc>https://s/l/%D7%90%D7%A9%D7%93%D7%95%D7%93/</loc>'));
     expect(renderIndex(const [], const {}, base: 'https://s'), contains('No pages published yet'));
   });
 
