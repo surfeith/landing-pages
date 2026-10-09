@@ -74,6 +74,18 @@ void main() {
     expect(renderIndex(const [], const {}, base: 'https://s'), contains('No pages published yet'));
   });
 
+  test('one town whatever language its pages were placed in: the town tag wins over the name', () {
+    final english = SitePage(page(extra: [['town', 'Ashdod']]));
+    final russian = SitePage(Event({...page(extra: [['town', 'Ashdod']]).json, 'tags': [
+      ['d', 'page-2'], ['title', 'Vet'], ['t', 'vet'], ['location', 'Ашдод, Израиль'], ['town', 'Ashdod'], ['client', 'verity'],
+    ]}));
+    expect(english.town, 'Ashdod');
+    expect(russian.town, 'Ashdod');
+    expect(slugOf(russian.town), 'ashdod');
+    expect(SitePage(page()).town, 'Ashdod', reason: 'without the tag, the first part of the place name');
+    expect(SitePage(page(extra: [['town', '  ']])).town, 'Ashdod', reason: 'a blank tag counts as none');
+  });
+
   test('a page withdrawn after it was published is left out', () {
     // Exercised through the same rules buildSite applies: a deletion by the
     // author naming the address, dated after the page.

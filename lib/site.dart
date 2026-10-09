@@ -176,7 +176,10 @@ class SitePage {
     return '${servers.first}/${frames[frames.length ~/ 2]}';
   }
 
-  String get town => townOf(place);
+  /// The town in English from the app's lookup, so that one city is one
+  /// listing whatever language its pages were placed in; the first part
+  /// of the place name on a page published without it.
+  String get town => event.tag('town')?.trim().isNotEmpty == true ? event.tag('town')!.trim() : townOf(place);
 
   /// The file name on the site: author prefix and page id, safe for a path.
   String get slug =>
